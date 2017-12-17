@@ -583,7 +583,7 @@
             imdbid: getIMDBid(unescape(title)),
             season: season,
             episode: episode,
-            canonicalUrl: PREFIX + ":s:" + url + ':' + title,
+            canonicalUrl: PREFIX + ':s:' + url + ':' + title,
             sources: [{
                 url: 'hls:' + json.mans.manifest_m3u8 + '&c0e005ee151ce1c4=d5e9c117fbd82527bce2017d78aaf0ac'
             }]
@@ -682,11 +682,11 @@
             });
 
             linksBlob = response;
-            re = /<div id="episodes-([0-9]+)"([\S\s]*?)<\/div>/g;
+            re = /"showEpisodes\(([0-9]+),this\);">([\S\s]*?)<\/span>/g;
             match = re.exec(response);
             while (match) {
-                page.appendItem(PREFIX + ":indexSeason:" + encodeURIComponent(title + String.fromCharCode(8194) + '(Сезон ' + match[1]) + ':' + match[1], 'directory', {
-                    title: 'Сезон ' + match[1]
+                page.appendItem(PREFIX + ":indexSeason:" + encodeURIComponent(title + String.fromCharCode(8194) + '(' + match[2]) + ':' + match[1], 'directory', {
+                    title: match[2]
                 });
                 match = re.exec(response);
             };
@@ -796,7 +796,16 @@
         if (html) {
             var id = html[1].replace(/\\/g, '');
             page.appendItem('youtube:video:' + id.substr(id.lastIndexOf('/') + 1), 'video', {
-                title: 'Трейлер'
+                title: 'Трейлер',
+                icon: checkUrl(icon),
+                year: +year[2],
+                genre: genre,
+                duration: duration,
+                rating: rating,
+                timestamp: timestamp,
+                description: new showtime.RichText(coloredStr("Страна: ", orange) +
+                    country + coloredStr(" Слоган: ", orange) + slogan + "\n" +
+                    description)
             });
         }
 
