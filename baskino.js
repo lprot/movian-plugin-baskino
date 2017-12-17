@@ -591,11 +591,13 @@
         page.loading = false;
     });
 
-    var linksBlob;
+    var linksBlob = 0;
 
-    plugin.addURI(PREFIX + ":indexSeason:(.*):(.*)", function(page, title, episode) {
+    plugin.addURI(PREFIX + ":indexSeason:(.*):(.*):(.*)", function(page, title, episode, url) {
         setPageHeader(page, decodeURIComponent(title) + ')');
         page.loading = true;
+        if (!linksBlob)
+             linksBlob = showtime.httpReq(unescape(url)).toString();
         var links = linksBlob.match(/tvs_codes = ([\S\s]*?);/);
         if (links) {
             var json = showtime.JSONDecode(links[1]);
@@ -685,7 +687,7 @@
             re = /"showEpisodes\(([0-9]+),this\);">([\S\s]*?)<\/span>/g;
             match = re.exec(response);
             while (match) {
-                page.appendItem(PREFIX + ":indexSeason:" + encodeURIComponent(title + String.fromCharCode(8194) + '(' + match[2]) + ':' + match[1], 'directory', {
+                page.appendItem(PREFIX + ":indexSeason:" + encodeURIComponent(title + String.fromCharCode(8194) + '(' + match[2]) + ':' + match[1] + ':' + url, 'directory', {
                     title: match[2]
                 });
                 match = re.exec(response);
