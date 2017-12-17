@@ -186,7 +186,7 @@
     function getIMDBid(title) {
         var title = showtime.entityDecode(unescape(title)).trim().split(String.fromCharCode(8194))[0];
         var resp = showtime.httpReq('http://www.imdb.com/find?ref_=nv_sr_fn&q=' + encodeURIComponent(title).toString()).toString();
-        var imdbid = resp.match(/<a href="\/title\/(tt\d+)\//);
+        var imdbid = resp.match(/class="findResult[\s\S]*?<a href="\/title\/(tt\d+)\//);
         if (imdbid) return imdbid[1];
         return imdbid;
     };
@@ -800,7 +800,6 @@
                 icon: checkUrl(icon),
                 year: +year[2],
                 genre: genre,
-                duration: duration,
                 rating: rating,
                 timestamp: timestamp,
                 description: new showtime.RichText(coloredStr("Страна: ", orange) +
