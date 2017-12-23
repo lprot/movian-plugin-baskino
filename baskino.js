@@ -125,7 +125,6 @@
         function loader() {
             if (!tryToSearch) return false;
             page.loading = true;
-showtime.print(p);
             if (url == '/index.php?do=search')
                 var response = showtime.httpReq(service.baseURL + url, {
                     postdata: {
@@ -966,7 +965,12 @@ showtime.print(p);
 
     plugin.addURI(PREFIX + ":start", function(page) {
         page.loading = true;
-        var response = showtime.httpReq(service.baseURL).toString();
+        try {
+            var response = showtime.httpReq(service.baseURL).toString();
+        } catch(err) {
+            page.error('Не могу открыть: ' + service.baseURL + 'Возможно Ваш провайдер заблокировал к нему доступ. Сменить зеркало можно в настройках плагина.');
+            return;
+        }
         setPageHeader(page, plugin.getDescriptor().synopsis);
 
         page.appendItem(PREFIX + ':movies', 'directory', {
