@@ -18,7 +18,6 @@
  */
 
 (function(plugin) {
-    var BASE_URL = 'http://baskino.co';
     var PREFIX = plugin.getDescriptor().id;
     var logo = plugin.path + "logo.png";
 
@@ -95,11 +94,15 @@
     }
 
     var service = plugin.createService("Baskino", PREFIX + ":start", "video", true, logo);
+    var settings = plugin.createSettings(plugin.getDescriptor().title, logo, plugin.getDescriptor().title);
+    settings.createString('baseURL', "Base URL without '/' at the end", 'http://baskino.co', function(v) {
+        service.baseURL = v;
+    });
 
     // Top-250
     plugin.addURI(PREFIX + ":top", function(page) {
         page.loading = true;
-        var response = showtime.httpReq(BASE_URL + '/top/').toString();
+        var response = showtime.httpReq(service.baseURL + '/top/').toString();
         page.loading = false;
         setPageHeader(page, response.match(/<title>([\S\s]*?)<\/title>/)[1]);
         response = response.match(/<ul class="content_list_top"[\S\s]*?<\/ul>/);
@@ -115,17 +118,28 @@
         };
     });
 
-    function scrapePageAtURL(page, url, titleIsSet) {
+    function scrapePageAtURL(page, url, titleIsSet, query) {
         page.entries = 0;
         var p = 1, tryToSearch = true;
 
         function loader() {
             if (!tryToSearch) return false;
             page.loading = true;
-            if (url.substr(0,4) == '&sto')
-                var response = showtime.httpReq(BASE_URL+'/index.php?do=search&subaction=search&search_start=' + p + url).toString();
+showtime.print(p);
+            if (url == '/index.php?do=search')
+                var response = showtime.httpReq(service.baseURL + url, {
+                    postdata: {
+                        subaction: 'search',
+                        actors_only:0,
+                        search_start: p,
+                        full_search:0,
+                        result_from:1,
+                        result_from:1,
+                        story:query
+                    }
+                }).toString();
             else
-                var response = showtime.httpReq((url.substr(0, 4) == 'http' ? '' : BASE_URL) + unescape(url) + "/page/" + p + "/").toString();
+                var response = showtime.httpReq((url.substr(0, 4) == 'http' ? '' : service.baseURL) + unescape(url) + "/page/" + p + "/").toString();
             page.loading = false;
             if (!titleIsSet) {
                 var title = response.match(/найдено(.*?)ответов/);
@@ -158,7 +172,8 @@
             p++;
             return true;
         };
-        loader();
+        for (var i=0; i<5; i++) // fixing broken paginator
+            loader();
         page.paginator = loader;
     };
 
@@ -168,7 +183,7 @@
 
     plugin.addURI(PREFIX + ":movies", function(page) {
         page.loading = true;
-        var response = showtime.httpReq(BASE_URL).toString();
+        var response = showtime.httpReq(service.baseURL).toString();
         page.loading = false;
         setPageHeader(page, response.match(/<title>([\S\s]*?)<\/title>/)[1]);
         response = response.match(/<ul class="sf-menu">([\s\S]*?)<\/ul>/)[1];
@@ -873,7 +888,7 @@
             re = /data\-person="([\S\s]*?)" href="([\S\s]*?)"/g;
             html = re.exec(actors);
             while (html) {
-                var json = showtime.JSONDecode(showtime.httpReq(BASE_URL + '/engine/ajax/getActorData.php?name='+encodeURIComponent(html[1])));
+                var json = showtime.JSONDecode(showtime.httpReq(service.baseURL + '/engine/ajax/getActorData.php?name='+encodeURIComponent(html[1])));
                 page.appendItem(PREFIX + ":indexURL:" + escape(html[2]), 'video', {
                     title: html[1],
                     icon: json.image
@@ -946,12 +961,12 @@
     });
 
     function checkUrl(url) {
-        return url.substr(0, 4) == 'http' ? url : BASE_URL + url
+        return url.substr(0, 4) == 'http' ? url : service.baseURL + url
     }
 
     plugin.addURI(PREFIX + ":start", function(page) {
         page.loading = true;
-        var response = showtime.httpReq(BASE_URL).toString();
+        var response = showtime.httpReq(service.baseURL).toString();
         setPageHeader(page, plugin.getDescriptor().synopsis);
 
         page.appendItem(PREFIX + ':movies', 'directory', {
@@ -974,7 +989,7 @@
         var re = /<img  onclick=\(window.location.href='(.*?)'\); title="(.*?)"[\S\s]*?src="(.*?)"[\S\s]*?'\);>(.*?)<\/span>/g;
         var match = re.exec(response);
         while (match) {
-            page.appendItem(PREFIX + ':index:' + escape(BASE_URL + match[1]), 'video', {
+            page.appendItem(PREFIX + ':index:' + escape(service.baseURL + match[1]), 'video', {
                 title: new showtime.RichText(match[2]),
                 icon: checkUrl(match[3]),
                 description: new showtime.RichText(coloredStr('Режиссер: ', orange) + match[4])
@@ -991,7 +1006,7 @@
         re = /<a href="([\S\s]*?)"><img title="([\S\s]*?)" src="([\S\s]*?)"[\S\s]*?class="quality_type ([\S\s]*?)">/g;
         var match = re.exec(n);
         while (match) {
-            page.appendItem(PREFIX + ':index:' + escape(BASE_URL + match[1]), 'video', {
+            page.appendItem(PREFIX + ':index:' + escape(service.baseURL + match[1]), 'video', {
                 title: new showtime.RichText((match[4] == "quality_hd" ? coloredStr("HD", orange) : coloredStr("DVD", orange)) + ' ' + match[2]),
                 icon: checkUrl(match[3])
             });
@@ -1006,6 +1021,6 @@
     });
 
     plugin.addSearcher("baskino", logo, function(page, query) {
-        scrapePageAtURL(page, '&story=' + query.replace(/\s/g, '\+'), false)
+        scrapePageAtURL(page, '/index.php?do=search', false, query)
     });
 })(this);
