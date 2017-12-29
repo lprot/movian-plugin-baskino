@@ -541,7 +541,7 @@
             imdbid: getIMDBid(unescape(title)),
             season: season,
             episode: episode,
-            canonicalUrl: PREFIX + ":s:" + url + ':' + title,
+            canonicalUrl: PREFIX + ":hdgo:" + url + ':' + title,
             sources: [{
                 url: doc.match(/<source src="([\s\S]*?)"/)[1]
             }]
@@ -553,34 +553,39 @@
     var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.84 Safari/537.36';
     plugin.addURI(PREFIX + ":s:(.*):(.*)", function(page, url, title) {
         page.loading = true;
-        var host = unescape(url).replace('http://','').replace('https://','').split(/[/?#]/)[0];
         var doc = showtime.httpReq(unescape(url), {
             headers: {
-                Host: host,
+                Host: unescape(url).replace('http://','').replace('https://','').split(/[/?#]/)[0],
                 Referer: 'http://baskino.co/',
                 'User-Agent': UA,
                 'X-Requested-With': 'XMLHttpRequest'
             }
         }).toString();
-        host = doc.match(/host: '([\s\S]*?)'/);
-        var token = doc.match(/video_token: '([\s\S]*?)'/);
-	var json = showtime.JSONDecode(showtime.httpReq('http://' + host[1] + '/manifests/video/' + token[1] + '/all', {
+        var host = doc.match(/host: '([\s\S]*?)'/)[1];
+        var js = showtime.httpReq('http://' + host + doc.match(/<script src="([\s\S]*?)">/)[1]).toString();
+        js = js.match(/mw_key:"([\s\S]*?)"[\s\S]*?ad_attr:([\s\S]*?),iframe_version:"([\s\S]*?)"[\s\S]*?\.([\s\S]*?)=[\s\S]*?"([\s\S]*?)"/);
+        var data = {
+                'mw_key': js[1],
+                'mw_pid': doc.match(/partner_id: ([\s\S]*?),/)[1],
+                'p_domain_id': doc.match(/domain_id: ([\s\S]*?),/)[1],
+                'ad_attr': js[2],
+                'iframe_ver': js[3]
+            };
+        var re = new RegExp(js[5] + "'[\\s\\S]*?'([\\s\\S]*?)'");
+        data[trim(js[4])] = re.exec(doc)[1];
+	var json = showtime.JSONDecode(showtime.httpReq('http://' + host + '/manifests/video/' + doc.match(/video_token: '([\s\S]*?)'/)[1] + '/all', {
             headers: {
-                Host: host[1],
+                Host: host,
                 Referer: unescape(url),
                 'User-Agent': UA,
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            postdata: {
-                'mw_key': '1ffd4aa558cc51f5a9fc6888e7bc5cb4',
-                'mw_pid': '918',
-                'p_domain_id': '455971'
-            }
+            postdata: data
         }));
-        
-        plugin.addHTTPAuth('.*' + host[1] + '.*', function(req) {
+
+        plugin.addHTTPAuth('.*' + host + '.*', function(req) {
                 req.setHeader('User-Agent', UA);
-                req.setHeader('Host', host[1]);
+                req.setHeader('Host', host);
                 req.setHeader('Referer', unescape(url));
                 req.setHeader('X-Requested-With', 'XMLHttpRequest');
             });
@@ -592,6 +597,7 @@
             season = +series[0].match(/(\d+)/)[1];
             episode = +series[1].match(/(\d+)/)[1];
         }
+
         page.source = "videoparams:" + showtime.JSONEncode({
             title: unescape(title),
             imdbid: getIMDBid(unescape(title)),
@@ -599,7 +605,7 @@
             episode: episode,
             canonicalUrl: PREFIX + ':s:' + url + ':' + title,
             sources: [{
-                url: 'hls:' + json.mans.manifest_m3u8 + '&c0e005ee151ce1c4=d5e9c117fbd82527bce2017d78aaf0ac'
+                url: 'hls:' + json.mans.manifest_m3u8
             }]
         });
         page.loading = false;
@@ -968,7 +974,7 @@
         try {
             var response = showtime.httpReq(service.baseURL).toString();
         } catch(err) {
-            page.error('Не могу открыть: ' + service.baseURL + 'Возможно Ваш провайдер заблокировал к нему доступ. Сменить зеркало можно в настройках плагина.');
+            page.error('Не могу открыть: ' + service.baseURL + ' Возможно Ваш провайдер заблокировал к нему доступ. Сменить зеркало можно в настройках плагина.');
             return;
         }
         setPageHeader(page, plugin.getDescriptor().synopsis);
