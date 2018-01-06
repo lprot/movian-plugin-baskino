@@ -1,14 +1,15 @@
 {
-	"description": "<p>Baskino.com - Онлайн фильмы в хорошем HD качестве бесплатно и без регистрации<p>Для дополнительной информации, посетите <a href=\"http://baskino.com\">http://baskino.com</a>",
+	"description": "<p>Baskino.co - Онлайн фильмы в хорошем HD качестве бесплатно и без регистрации<p>Для дополнительной информации, посетите <a href=\"http://baskino.co\">http://baskino.co</a>",
 	"author": "lprot",
 	"homepage": "http://github.com/lprot/movian-plugin-baskino",
 	"title": "Baskino",
-	"synopsis": "Baskino.com: Онлайн фильмы в хорошем HD качестве бесплатно и без регистрации",
-	"version": "0.4.13",
+	"synopsis": "Baskino.co: Онлайн фильмы в хорошем HD качестве бесплатно и без регистрации",
+	"version": "0.4.14",
         "file": "baskino.js",
 	"showtimeVersion": "4.8",
 	"type": "ecmascript",
 	"id": "baskino.com",
 	"category": "video",
-	"icon": "logo.png"
+	"icon": "logo.png",
+        "apiversion": 2
 }
