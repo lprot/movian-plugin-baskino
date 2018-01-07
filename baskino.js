@@ -91,8 +91,8 @@ settings.createString('baseURL', "Base URL without '/' at the end", 'http://bask
 new page.Route(plugin.id + ":top", function(page) {
     page.loading = true;
     var response = http.request(service.baseURL + '/top/').toString();
-    page.loading = false;
     setPageHeader(page, response.match(/<title>([\S\s]*?)<\/title>/)[1]);
+    page.loading = false;
     response = response.match(/<ul class="content_list_top"[\S\s]*?<\/ul>/);
     // 1-link, 2-number, 3-title, 4-year, 5-rating
     var re = /<a href="([\S\s]*?)">[\S\s]*?<b>([\S\s]*?)<\/b>[\S\s]*?<s>([\S\s]*?)<\/s>[\S\s]*?<em>([\S\s]*?)<\/em>[\S\s]*?<u>([\S\s]*?)<\/u>/g;
@@ -128,7 +128,6 @@ function scrapePageAtURL(page, url, titleIsSet, query) {
             }).toString();
         else
             var response = http.request((url.substr(0, 4) == 'http' ? '' : service.baseURL) + unescape(url) + "/page/" + p + "/").toString();
-        page.loading = false;
         if (!titleIsSet) {
             var title = response.match(/найдено(.*?)ответов/);
             if (title && page.metadata)
@@ -137,6 +136,7 @@ function scrapePageAtURL(page, url, titleIsSet, query) {
                 setPageHeader(page, response.match(/<title>(.*?)<\/title>/)[1].replace(' - смотреть онлайн бесплатно в хорошем качестве', ''));
             titleIsSet = true;
         }
+        page.loading = false;
         // 1-link, 2-title, 3-icon, 4-quality, 5-full title,
         // 6-rating, 7-num of comments, 8-date added, 9-year
         var re = /<div class="postcover">[\S\s]*?<a href="([\S\s]*?)"[\S\s]*?<img title="([\S\s]*?)" src="([\S\s]*?)"([\S\s]*?)<\/a>[\S\s]*?<div class="posttitle">[\S\s]*?>([\S\s]*?)<\/a>[\S\s]*?<li class="current-rating" style="[\S\s]*?">([\S\s]*?)<\/li>[\S\s]*?<!-- <div class="linline">([\S\s]*?)<\/div>[\S\s]*?<div class="linline">([\S\s]*?)<\/div>[\S\s]*?<div class="rinline">([\S\s]*?)<\/div>/g;
@@ -163,6 +163,7 @@ function scrapePageAtURL(page, url, titleIsSet, query) {
     for (var i = 0; i < 5; i++) // fixing broken paginator
         loader();
     page.paginator = loader;
+    page.loading = false;
 };
 
 new page.Route(plugin.id + ":indexURL:(.*)", function(page, url) {
@@ -172,8 +173,8 @@ new page.Route(plugin.id + ":indexURL:(.*)", function(page, url) {
 new page.Route(plugin.id + ":movies", function(page) {
     page.loading = true;
     var response = http.request(service.baseURL).toString();
-    page.loading = false;
     setPageHeader(page, response.match(/<title>([\S\s]*?)<\/title>/)[1]);
+    page.loading = false;
     response = response.match(/<ul class="sf-menu">([\s\S]*?)<\/ul>/)[1];
     var re = /<li><a href="([\s\S]*?)">([\s\S]*?)<\/a><\/li>/g;
     var match = re.exec(response);
@@ -615,9 +616,9 @@ var linksBlob = 0;
 
 new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, episode, url) {
     setPageHeader(page, decodeURIComponent(title) + ')');
-    page.loading = true;
     if (!linksBlob)
         linksBlob = http.request(unescape(url)).toString();
+    page.loading = false;
     var links = linksBlob.match(/tvs_codes = ([\S\s]*?);/);
     if (links) {
         var json = JSON.parse(links[1]);
@@ -656,7 +657,6 @@ new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, 
         page.error("Не удалось получить линки серий :(");
         return;
     }
-    page.loading = false;
 });
 
 // Index page
@@ -668,6 +668,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     var origTitle = response.match(/<td itemprop="alternativeHeadline">([\S\s]*?)<\/td>/);
     if (origTitle) name += " | " + origTitle[1];
     setPageHeader(page, name);
+    page.loading = false;
     var icon = response.match(/<img itemprop="image"[\S\s]*?src="([\S\s]*?)"/)[1];
     var year = response.match(/>Год:<\/td>[\S\s]*?<a href="([\S\s]*?)">([\S\s]*?)<\/a>/);
     var country = response.match(/>Страна:<\/td>[\S\s]*?<td>([\S\s]*?)<\/td>/)[1];
@@ -944,7 +945,9 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
                 added = author[2];
                 author = author[1];
             } else {
-                author = trim(match[1].match(/Добавил ([\S\s]*?)<\/div>/)[1]);
+                author = match[1].match(/[\S\s]*?<b>([\S\s]*?)<\/b>([\S\s]*?)<\/div>/);
+                added = author[2];
+                author = author[1];
             }
             page.appendPassiveItem('video', '', {
                 title: new RichText(coloredStr(trim(author), orange) + added),
@@ -979,7 +982,10 @@ new page.Route(plugin.id + ":start", function(page) {
         return;
     }
     setPageHeader(page, plugin.synopsis);
-
+    page.loading = false;
+    page.appendItem(plugin.id + ":search:", 'search', {
+        title: 'Поиск в ' + service.baseURL
+    });
     page.appendItem(plugin.id + ':movies', 'directory', {
         title: 'Фильмы',
     });
@@ -1031,6 +1037,10 @@ new page.Route(plugin.id + ":start", function(page) {
     scrapePageAtURL(page, '', true);
 });
 
+new page.Route(plugin.id + ":search:(.*)", function(page, query) {
+    setPageHeader(page, plugin.title); 
+    scrapePageAtURL(page, '/index.php?do=search', false, query)
+});
 page.Searcher("baskino", logo, function(page, query) {
     scrapePageAtURL(page, '/index.php?do=search', false, query)
 });
