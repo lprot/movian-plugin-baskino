@@ -86,13 +86,19 @@ settings.globalSettings(plugin.id, plugin.title, logo, plugin.synopsis);
 settings.createString('baseURL', "Base URL without '/' at the end", 'http://baskino.co', function(v) {
     service.baseURL = v;
 });
+settings.createBool('debug', 'Enable debug logging',  false, function(v) {
+    service.debug = v;
+}); 
+
+function log(str) {
+    if (service.debug) console.log(str);
+}
 
 // Top-250
 new page.Route(plugin.id + ":top", function(page) {
+    setPageHeader(page, plugin.title + ' / Топ 250');
     page.loading = true;
     var response = http.request(service.baseURL + '/top/').toString();
-    setPageHeader(page, response.match(/<title>([\S\s]*?)<\/title>/)[1]);
-    page.loading = false;
     response = response.match(/<ul class="content_list_top"[\S\s]*?<\/ul>/);
     // 1-link, 2-number, 3-title, 4-year, 5-rating
     var re = /<a href="([\S\s]*?)">[\S\s]*?<b>([\S\s]*?)<\/b>[\S\s]*?<s>([\S\s]*?)<\/s>[\S\s]*?<em>([\S\s]*?)<\/em>[\S\s]*?<u>([\S\s]*?)<\/u>/g;
@@ -104,9 +110,11 @@ new page.Route(plugin.id + ":top", function(page) {
         });
         match = re.exec(response);
     };
+    page.loading = false;
 });
 
-function scrapePageAtURL(page, url, titleIsSet, query) {
+function scrapePageAtURL(page, url, title, query) {
+    setPageHeader(page, title);
     page.entries = 0;
     var p = 1,
         tryToSearch = true;
@@ -128,15 +136,7 @@ function scrapePageAtURL(page, url, titleIsSet, query) {
             }).toString();
         else
             var response = http.request((url.substr(0, 4) == 'http' ? '' : service.baseURL) + unescape(url) + "/page/" + p + "/").toString();
-        if (!titleIsSet) {
-            var title = response.match(/найдено(.*?)ответов/);
-            if (title && page.metadata)
-                setPageHeader(page, page.metadata.title + ' (' + trim(title[1]) + ')');
-            else
-                setPageHeader(page, response.match(/<title>(.*?)<\/title>/)[1].replace(' - смотреть онлайн бесплатно в хорошем качестве', ''));
-            titleIsSet = true;
-        }
-        page.loading = false;
+
         // 1-link, 2-title, 3-icon, 4-quality, 5-full title,
         // 6-rating, 7-num of comments, 8-date added, 9-year
         var re = /<div class="postcover">[\S\s]*?<a href="([\S\s]*?)"[\S\s]*?<img title="([\S\s]*?)" src="([\S\s]*?)"([\S\s]*?)<\/a>[\S\s]*?<div class="posttitle">[\S\s]*?>([\S\s]*?)<\/a>[\S\s]*?<li class="current-rating" style="[\S\s]*?">([\S\s]*?)<\/li>[\S\s]*?<!-- <div class="linline">([\S\s]*?)<\/div>[\S\s]*?<div class="linline">([\S\s]*?)<\/div>[\S\s]*?<div class="rinline">([\S\s]*?)<\/div>/g;
@@ -166,32 +166,72 @@ function scrapePageAtURL(page, url, titleIsSet, query) {
     page.loading = false;
 };
 
-new page.Route(plugin.id + ":indexURL:(.*)", function(page, url) {
-    scrapePageAtURL(page, url, false);
+new page.Route(plugin.id + ":indexURL:(.*):(.*)", function(page, url, title) {
+    scrapePageAtURL(page, url, plugin.title + ' / ' + unescape(title));
 });
 
 new page.Route(plugin.id + ":movies", function(page) {
+    setPageHeader(page, plugin.title + ' / Фильмы');
     page.loading = true;
     var response = http.request(service.baseURL).toString();
-    setPageHeader(page, response.match(/<title>([\S\s]*?)<\/title>/)[1]);
-    page.loading = false;
     response = response.match(/<ul class="sf-menu">([\s\S]*?)<\/ul>/)[1];
     var re = /<li><a href="([\s\S]*?)">([\s\S]*?)<\/a><\/li>/g;
     var match = re.exec(response);
     while (match) {
-        page.appendItem(plugin.id + ":indexURL:" + match[1], 'directory', {
+        page.appendItem(plugin.id + ":indexURL:" + match[1] + ':' + escape(match[2]), 'directory', {
             title: new RichText(match[2])
         });
         match = re.exec(response);
     };
+    page.loading = false;
 });
 
 // Search IMDB ID by title
 function getIMDBid(title) {
-    var title = string.entityDecode(unescape(title)).trim().split(String.fromCharCode(8194))[0];
-    var resp = http.request('http://www.imdb.com/find?ref_=nv_sr_fn&q=' + encodeURIComponent(title).toString()).toString();
-    var imdbid = resp.match(/class="findResult[\s\S]*?<a href="\/title\/(tt\d+)\//);
-    if (imdbid) return imdbid[1];
+    var imdbid = null;
+    var title = string.entityDecode(unescape(title)).toString();
+    log('Splitting the title for IMDB ID request: ' + title);
+    var splittedTitle = title.split('|');
+    if (splittedTitle.length == 1)
+        splittedTitle = title.split('/');
+    if (splittedTitle.length == 1)
+        splittedTitle = title.split('-');
+    log('Splitted title is: ' + splittedTitle);
+    if (splittedTitle[1]) { // first we look by original title
+        var cleanTitle = splittedTitle[1];
+        //var match = cleanTitle.match(/[^\(|\[|\.]*/);
+        //if (match)
+        //    cleanTitle = match;
+        log('Trying to get IMDB ID for: ' + cleanTitle);
+        resp = http.request('http://www.imdb.com/find?ref_=nv_sr_fn&q=' + encodeURIComponent(cleanTitle)).toString();
+        imdbid = resp.match(/class="findResult[\s\S]*?<a href="\/title\/(tt\d+)\//);
+        if (!imdbid && cleanTitle.indexOf('/') != -1) {
+            splittedTitle2 = cleanTitle.split('/');
+            for (var i in splittedTitle2) {
+                log('Trying to get IMDB ID (1st attempt) for: ' + splittedTitle2[i].trim());
+                resp = http.request('http://www.imdb.com/find?ref_=nv_sr_fn&q=' + encodeURIComponent(splittedTitle2[i].trim())).toString();
+                imdbid = resp.match(/class="findResult[\s\S]*?<a href="\/title\/(tt\d+)\//);
+                if (imdbid) break;
+            }
+        }
+    }
+    if (!imdbid)
+        for (var i in splittedTitle) {
+            if (i == 1) continue; // we already checked that
+            var cleanTitle = splittedTitle[i];
+            //var match = cleanTitle.match(/[^\(|\[|\.]*/);
+            //if (match)
+            //    cleanTitle = match;
+            log('Trying to get IMDB ID (2nd attempt) for: ' + cleanTitle);
+            resp = http.request('http://www.imdb.com/find?ref_=nv_sr_fn&q=' + encodeURIComponent(cleanTitle)).toString();
+            imdbid = resp.match(/class="findResult[\s\S]*?<a href="\/title\/(tt\d+)\//);
+            if (imdbid) break;
+        }
+    if (imdbid) {
+        log('Got following IMDB ID: ' + imdbid[1]);
+        return imdbid[1];
+    }
+    log('Cannot get IMDB ID :(');
     return imdbid;
 };
 
@@ -834,7 +874,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     page.appendItem("", "separator", {
         title: 'Год:'
     });
-    page.appendItem(plugin.id + ":indexURL:" + escape(year[1]), 'directory', {
+    page.appendItem(plugin.id + ":indexURL:" + escape(year[1]) + ':Год', 'directory', {
         title: year[2]
     });
 
@@ -851,7 +891,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
                 });
                 first = false;
             }
-            page.appendItem(plugin.id + ":indexURL:" + escape(html[1]), 'directory', {
+            page.appendItem(plugin.id + ":indexURL:" + escape(html[1]) + ':' + escape(html[2]), 'directory', {
                 title: html[2]
             });
             html = re.exec(collections[1]);
@@ -865,7 +905,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     re = /href="([\S\s]*?)">([\S\s]*?)<\/a>/g;
     html = re.exec(genres);
     while (html) {
-        page.appendItem(plugin.id + ":indexURL:" + escape(html[1]), 'directory', {
+        page.appendItem(plugin.id + ":indexURL:" + escape(html[1]) + ':' + escape(html[2]), 'directory', {
             title: html[2]
         });
         html = re.exec(genres);
@@ -878,7 +918,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     re = /href="([\S\s]*?)">([\S\s]*?)<\/a>/g;
     html = re.exec(directors);
     while (html) {
-        page.appendItem(plugin.id + ":indexURL:" + escape(html[1]), 'directory', {
+        page.appendItem(plugin.id + ":indexURL:" + escape(html[1]) + ':' + escape(html[2]), 'directory', {
             title: html[2]
         });
         html = re.exec(directors);
@@ -894,7 +934,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
         html = re.exec(actors);
         while (html) {
             var json = JSON.parse(http.request(service.baseURL + '/engine/ajax/getActorData.php?name=' + encodeURIComponent(html[1])));
-            page.appendItem(plugin.id + ":indexURL:" + escape(html[2]), 'video', {
+            page.appendItem(plugin.id + ":indexURL:" + escape(html[2]) + ':' + escape(html[1]), 'video', {
                 title: html[1],
                 icon: json.image
             });
@@ -974,28 +1014,28 @@ function checkUrl(url) {
 }
 
 new page.Route(plugin.id + ":start", function(page) {
+    setPageHeader(page, plugin.synopsis);
     page.loading = true;
     try {
         var response = http.request(service.baseURL).toString();
     } catch (err) {
-        page.error('Не могу открыть: ' + service.baseURL + ' Возможно Ваш провайдер заблокировал к нему доступ. Сменить зеркало можно в настройках плагина.');
+        page.loading = false;
+        page.error('Не могу открыть: ' + service.baseURL + ' Возможно интернет провайдер заблокировал к нему доступ. Сменить зеркало можно в настройках плагина.');
         return;
     }
-    setPageHeader(page, plugin.synopsis);
-    page.loading = false;
     page.appendItem(plugin.id + ":search:", 'search', {
         title: 'Поиск в ' + service.baseURL
     });
     page.appendItem(plugin.id + ':movies', 'directory', {
         title: 'Фильмы',
     });
-    page.appendItem(plugin.id + ':indexURL:/new', 'directory', {
+    page.appendItem(plugin.id + ':indexURL:/new:Новинки', 'directory', {
         title: 'Новинки',
     });
     page.appendItem(plugin.id + ':top', 'directory', {
         title: 'Топ-250',
     });
-    page.appendItem(plugin.id + ':indexURL:/serial', 'directory', {
+    page.appendItem(plugin.id + ':indexURL:/serial:Сериалы', 'directory', {
         title: 'Сериалы',
     });
 
@@ -1034,13 +1074,13 @@ new page.Route(plugin.id + ":start", function(page) {
         title: 'Фильмы онлайн:'
     });
 
-    scrapePageAtURL(page, '', true);
+    scrapePageAtURL(page, '', plugin.synopsis);
+    page.loading = false;
 });
 
 new page.Route(plugin.id + ":search:(.*)", function(page, query) {
-    setPageHeader(page, plugin.title); 
-    scrapePageAtURL(page, '/index.php?do=search', false, query)
+    scrapePageAtURL(page, '/index.php?do=search', plugin.title, query)
 });
 page.Searcher("baskino", logo, function(page, query) {
-    scrapePageAtURL(page, '/index.php?do=search', false, query)
+    scrapePageAtURL(page, '/index.php?do=search', plugin.title, query)
 });
