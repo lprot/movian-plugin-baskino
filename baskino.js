@@ -697,7 +697,7 @@ new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, 
 new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     page.loading = true;
     var response = http.request(unescape(url)).toString();
-    var description = trim(response.match(/<div class="description"[\S\s]*?<div id="[\S\s]*?">([\S\s]*?)<br\s\/>/)[1]);
+    var description = new RichText(trim(response.match(/<div class="description"[\S\s]*?<div id="[\S\s]*?">([\S\s]*?)<br\s\/>/)[1]));
     var name = response.match(/<td itemprop="name">([\S\s]*?)<\/td>/)[1];
     var origTitle = response.match(/<td itemprop="alternativeHeadline">([\S\s]*?)<\/td>/);
     if (origTitle) name += " | " + origTitle[1];
