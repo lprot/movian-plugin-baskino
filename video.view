@@ -20,6 +20,29 @@ widget(container_y, {
   spacing: 0.5em;
 
   widget(container_z, {
+    weight: 1;
+    widget(deck, {
+      widget(slideshow, {
+        time: 6;
+        transitionTime: 1;
+        cloner($self.metadata.thumbs, backdrop, {
+          source: $self.url;
+          maxIntensity: 0.5;
+        });
+      });
+
+      widget(slideshow, {
+        time: 6;
+        transitionTime: 1;
+        cloner($self.metadata.backdrops, backdrop, {
+          source: $self.url;
+          maxIntensity: 0.5;
+        });
+      });
+
+      page: count($self.metadata.backdrops) > 0;
+
+    });
 
     widget(container_y, {
       filterConstraintX: true;
