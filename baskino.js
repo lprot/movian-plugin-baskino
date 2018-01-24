@@ -701,8 +701,8 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     var name = response.match(/<td itemprop="name">([\S\s]*?)<\/td>/)[1];
     var origTitle = response.match(/<td itemprop="alternativeHeadline">([\S\s]*?)<\/td>/);
     if (origTitle) name += " | " + origTitle[1];
-    setPageHeader(page, name);
     page.metadata.glwview = Plugin.path + 'list.view';
+    setPageHeader(page, name);
     page.loading = true;
     var icon = response.match(/<img itemprop="image"[\S\s]*?src="([\S\s]*?)"/)[1];
     var year = response.match(/>Год:<\/td>[\S\s]*?<a href="([\S\s]*?)">([\S\s]*?)<\/a>/);
