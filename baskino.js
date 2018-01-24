@@ -60,12 +60,6 @@ function coloredStr(str, color) {
     return '<font color="' + color + '">' + str + '</font>';
 }
 
-function getTimestamp(str) {
-    if (!str) return 0;
-    var d = str.match(/\d+/g); // extract date parts
-    return +Date.UTC(d[2], d[1] - 1, d[0]) / 1000; // year, month, day
-}
-
 function setPageHeader(page, title) {
     if (page.metadata) {
         page.metadata.title = string.entityDecode(unescape(title));
@@ -73,7 +67,7 @@ function setPageHeader(page, title) {
     }
     page.type = "directory";
     page.contents = "items";
-    page.loading = true;
+    page.loading = false;
 }
 
 function trim(s) {
@@ -147,10 +141,9 @@ function scrapePageAtURL(page, url, title, query) {
                 rating: +(match[6]) / 2,
                 icon: checkUrl(match[3]),
                 year: match[9].match(/(\d+)/) ? +match[9].match(/(\d+)/)[1] : '',
-                timestamp: getTimestamp(match[8]),
-                description: new RichText((match[7].match(/(\d+)/) ? coloredStr('Комментариев: ', orange) + match[7].match(/(\d+)/)[1] : '') +
-                    coloredStr(' Добавлено: ', orange) + match[8] +
-                    (match[9].match(/<span class="tvs_new">(.*)<\/span>/) ? '\n' + match[9].match(/<span class="tvs_new">(.*)<\/span>/)[1] : ''))
+                tagline: new RichText((match[9].match(/<span class="tvs_new">(.*)<\/span>/) ? match[9].match(/<span class="tvs_new">(.*)<\/span>/)[1] + ' ' : '') + 
+                    coloredStr('Добавлено: ', orange) + match[8] +
+                    (match[7].match(/(\d+)/) ? coloredStr(' Комментариев: ', orange) + match[7].match(/(\d+)/)[1] : ''))
             });
             page.entries++;
             match = re.exec(response);
@@ -175,7 +168,7 @@ new page.Route(plugin.id + ":movies", function(page) {
     page.loading = true;
     var response = http.request(service.baseURL).toString();
     response = response.match(/<ul class="sf-menu">([\s\S]*?)<\/ul>/)[1];
-    var re = /<li><a href="([\s\S]*?)">([\s\S]*?)<\/a><\/li>/g;
+    var re = /<li><a href="([\s\S]*?)">([\s\S]*?)</g;
     var match = re.exec(response);
     while (match) {
         page.appendItem(plugin.id + ":indexURL:" + match[1] + ':' + escape(match[2]), 'directory', {
@@ -656,9 +649,9 @@ var linksBlob = 0;
 
 new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, episode, url) {
     setPageHeader(page, decodeURIComponent(title) + ')');
+    page.loading = true;
     if (!linksBlob)
         linksBlob = http.request(unescape(url)).toString();
-    page.loading = false;
     var links = linksBlob.match(/tvs_codes = ([\S\s]*?);/);
     if (links) {
         var json = JSON.parse(links[1]);
@@ -697,6 +690,7 @@ new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, 
         page.error("Не удалось получить линки серий :(");
         return;
     }
+    page.loading = false;
 });
 
 // Index page
@@ -708,7 +702,8 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     var origTitle = response.match(/<td itemprop="alternativeHeadline">([\S\s]*?)<\/td>/);
     if (origTitle) name += " | " + origTitle[1];
     setPageHeader(page, name);
-    page.loading = false;
+    page.metadata.glwview = Plugin.path + 'list.view';
+    page.loading = true;
     var icon = response.match(/<img itemprop="image"[\S\s]*?src="([\S\s]*?)"/)[1];
     var year = response.match(/>Год:<\/td>[\S\s]*?<a href="([\S\s]*?)">([\S\s]*?)<\/a>/);
     var country = response.match(/>Страна:<\/td>[\S\s]*?<td>([\S\s]*?)<\/td>/)[1];
@@ -718,8 +713,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     if (duration) duration = duration[1];
     var rating = response.match(/<b itemprop="ratingValue">([\S\s]*?)<\/b>/)[1].replace(",", ".") * 10;
     var directors = response.match(/<a itemprop="director"([\S\s]*?)<\/td>/)[1];
-    var timestamp = response.match(/<div class="last_episode">Последняя серия добавлена ([\S\s]*?)<\/div>/);
-    if (timestamp) timestamp = getTimestamp(timestamp[1]);
+    var timestamp = response.match(/<div class="last_episode">([\S\s]*?)<\/div>/);
     var genres = response.match(/<a itemprop="genre"([\S\s]*?)<\/td>/)[1];
     var re = /href="[\S\s]*?">([\S\s]*?)<\/a>/g;
     var genre = 0;
@@ -730,6 +724,9 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
         match = re.exec(genres);
     };
 
+    genre = new RichText(genre + ' ' + coloredStr('<br>Cтрана: ', orange) + country +
+         (trim(slogan) != '-' && trim(slogan) ? coloredStr("<br>Слоган: ", orange) + slogan : ''))
+
     if (timestamp) { // series
         page.appendPassiveItem('video', {}, {
             title: name,
@@ -738,9 +735,8 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
             genre: genre,
             duration: duration,
             rating: rating,
-            timestamp: timestamp,
-            description: new RichText(coloredStr("Страна: ", orange) + country +
-                coloredStr(" Слоган: ", orange) + slogan + "\n" + description)
+            tagline: timestamp[1],
+            description: description
         });
 
         linksBlob = response;
@@ -761,10 +757,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
                 genre: genre,
                 duration: duration,
                 rating: rating,
-                timestamp: timestamp,
-                description: new RichText(coloredStr("Страна: ", orange) +
-                    country + coloredStr(" Слоган: ", orange) + slogan + "\n" +
-                    description)
+                description: description
             });
         }
         // add HD first
@@ -862,11 +855,9 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
             icon: checkUrl(icon),
             year: +year[2],
             genre: genre,
+            duration: duration,
             rating: rating,
-            timestamp: timestamp,
-            description: new RichText(coloredStr("Страна: ", orange) +
-                country + coloredStr(" Слоган: ", orange) + slogan + "\n" +
-                description)
+            description: description
         });
     }
 
@@ -880,7 +871,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
 
     //collections
     var first = true;
-    var collections = response.match(/class="b-collection__cell">([\S\s]*?)<\/td>/);
+    var collections = response.match(/>Цикл:<([\S\s]*?)<\/td>/);
     if (collections) {
         re = /<a href="([\S\s]*?)">([\S\s]*?)<\/a>/g;
         html = re.exec(collections[1]);
@@ -1005,8 +996,8 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
         return true;
     };
     loader();
-    page.loading = false;
     page.paginator = loader;
+    page.loading = false;
 });
 
 function checkUrl(url) {
@@ -1049,7 +1040,7 @@ new page.Route(plugin.id + ":start", function(page) {
         page.appendItem(plugin.id + ':index:' + escape(service.baseURL + match[1]), 'video', {
             title: new RichText(match[2]),
             icon: checkUrl(match[3]),
-            description: new RichText(coloredStr('Режиссер: ', orange) + match[4])
+            genre: new RichText(coloredStr('Режиссер: ', orange) + match[4])
         });
         match = re.exec(response);
     };
