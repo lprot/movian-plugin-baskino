@@ -50,25 +50,6 @@ widget(container_y, {
               style: "ListItemLabel";
               shadow: true;
             });
-
-            // TV Series variant
-
-            widget(container_y, {
-              spacing: 0.5em;
-              widget(label, {
-                caption: $self.metadata.episode.title;
-                size: 1.3em;
-                shadow: true;
-              });
-              widget(label, {
-                caption: fmt(_("Season %d - Episode %d"),
-                             $self.metadata.season.number,
-                             $self.metadata.episode.number);
-                shadow: true;
-              });
-            });
-            page: translate($self.metadata.vtype, 0,
-                            "tvseries", 1);
           });
           widget(label, {
             autohide: true;
@@ -98,7 +79,7 @@ widget(container_y, {
 	        });
 	      });
             });
-            space(1);
+//            space(1);
           });
         });
         widget(image, {
@@ -115,13 +96,6 @@ widget(container_y, {
 //        style: "ListItemLabelDimmed";
 //      });
     });
-  });
-
-  widget(label, {
-    autohide: true;
-    caption: $self.metadata.tagline;
-    maxlines: 3;
-    size: 1.2em;
   });
 
   widget(label, {
