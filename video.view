@@ -20,7 +20,7 @@ widget(container_y, {
   spacing: 0.5em;
 
   widget(container_z, {
-    //weight: 1;
+    weight: 1;
     widget(deck, {
       widget(slideshow, {
         time: 6;
@@ -130,14 +130,14 @@ widget(container_y, {
           source: $self.metadata.icon;
         });
       });
-      space(1);
-      widget(label, {
-        align: right;
-        size: 0.8em;
-        hidden: isVoid($self.metadata.source);
-        caption: $self.metadata.source;
-        style: "ListItemLabelDimmed";
-      });
+//      space(1);
+//      widget(label, {
+//        align: right;
+//        size: 0.8em;
+//        hidden: isVoid($self.metadata.source);
+//        caption: $self.metadata.source;
+//        style: "ListItemLabelDimmed";
+//      });
     });
   });
 
