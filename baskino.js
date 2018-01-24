@@ -857,6 +857,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
             genre: genre,
             duration: duration,
             rating: rating,
+            tagline: '',
             description: description
         });
     }
