@@ -20,7 +20,7 @@ widget(container_y, {
   spacing: 0.5em;
 
   widget(container_z, {
-    weight: 1;
+    //weight: 1;
     widget(deck, {
       widget(slideshow, {
         time: 6;
@@ -151,7 +151,7 @@ widget(container_y, {
   widget(label, {
     autohide: true;
     caption: $self.metadata.description;
-    maxlines: 20;
+    maxlines: 25;
   });
 
   widget(label, {
