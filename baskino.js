@@ -683,6 +683,7 @@ new page.Route(plugin.id + ":listSeries:(.*):(.*):(.*)", function(page, url, tit
             'X-Requested-With': 'XMLHttpRequest'
         }
     }).toString();
+    log(doc);
     try {
         eval('var episodes =' + doc.match(/episodes: ([\s\S]*?)\],/)[1]+']');
         for (var i in episodes) {
@@ -737,7 +738,18 @@ new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, 
                                 page.appendItem(plugin.id + ':listSeries:' + escape('http://' + host + '/serial/' + translations[i][0] + '/iframe?season=' + episode) + ':' + escape(translations[i][1]) + ':' + escape(decodeURIComponent(title)), 'directory', {
                                     title: translations[i][1]
                                 });
-                        } catch(err) {}
+                        } catch(err) {
+                           try {
+                               eval('var episodes =' + doc.match(/episodes: ([\s\S]*?)\],/)[1]+']');
+                               for (var i in episodes) {
+                                   page.appendItem(plugin.id + ':s:' + lnk + escape('&episode=' + episodes[i]) + ":" + escape(decodeURIComponent(title) + ' - ' + episodes[i] + ' cерия)'), 'video', {
+                                       title: episodes[i] + ' cерия'
+                                   });
+                               }
+                           } catch(err) {
+                               log(doc);
+                           }
+                        }
                     }
                     series = re2.exec(episodeDiv[2]);
                 }
