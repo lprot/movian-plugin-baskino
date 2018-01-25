@@ -17,7 +17,7 @@ delta($parentview.expanded, !isPreloaded());
 widget(container_y, {
   width: $ui.width / 2;
   margin: [0.5em, 3.5em, 0.5em, 0];
-  spacing: 0.5em;
+    //spacing: 0.5em;
 
   widget(container_z, {
     //weight: -1.777777;
@@ -49,21 +49,24 @@ widget(container_y, {
       filterConstraintY: true;
 
       margin: 0.5em;
-      spacing: 0.5em;
+      //spacing: 0.5em;
 
       widget(container_x, {
-        height: 8em;
-        spacing: 0.5em;
+
+        height: 7em;
+        //spacing: 0.5em;
 
         widget(container_y, {
           filterConstraintX: true;
-          spacing: 0.5em;
+
+          //spacing: 0.5em;
 
           widget(deck, {
 
             // Movie variant
 
             widget(label, {
+
               size: 1.3em;
               filterConstraintX: true;
               caption: select($self.metadata.year,
@@ -163,4 +166,3 @@ widget(container_y, {
     style: "ListItemLabelDimmed";
   });
 });
-

@@ -594,6 +594,13 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
             'X-Requested-With': 'XMLHttpRequest'
         }
     }).toString();
+
+    var subtitles = 0;
+    try { 
+        log(doc.match(/subtitles: ([\s\S]*?)},/)[1] + '}');
+        subtitles = JSON.parse(doc.match(/subtitles: ([\s\S]*?)},/)[1] + '}');
+    } catch(err) {}
+
     var host = doc.match(/host: '([\s\S]*?)'/)[1];
     var js = http.request('http://' + host + doc.match(/<script src="([\s\S]*?)">/)[1]).toString();
     js = js.match(/mw_key:"([\s\S]*?)"[\s\S]*?ad_attr:([\s\S]*?),iframe_version:"([\s\S]*?)"[\s\S]*?\.([\s\S]*?)=[\s\S]*?"([\s\S]*?)"/);
@@ -615,14 +622,12 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
         },
         postdata: data
     }));
-
     io.httpInspectorCreate('.*' + host + '.*', function(req) {
         req.setHeader('User-Agent', UA);
         req.setHeader('Host', host);
         req.setHeader('Referer', unescape(url));
         req.setHeader('X-Requested-With', 'XMLHttpRequest');
     });
-    page.type = "video";
     var series = unescape(title).trim().split(String.fromCharCode(8194));
     var season = null,
         episode = null;
@@ -632,7 +637,7 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
         episode = +series[1].match(/(\d+)/)[1];
     }
 
-    page.source = "videoparams:" + JSON.stringify({
+    var videoparams = {
         title: unescape(title),
         imdbid: getIMDBid(unescape(title)),
         season: season,
@@ -640,10 +645,55 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
         canonicalUrl: plugin.id + ':s:' + url + ':' + title,
         sources: [{
             url: 'hls:' + json.mans.manifest_m3u8
-        }]
-    });
+        }],
+        subtitles: []
+    };
+
+    if (subtitles.master_vtt) {
+        videoparams.subtitles.push({
+            url: subtitles.master_vtt,
+            language: 'rus',
+            source: service.baseURL,
+            title: unescape(title)
+        });
+    };
+    if (subtitles.master_vtt) {
+        videoparams.subtitles.push({
+            url: subtitles.slave_vtt,
+            language: 'eng',
+            source: service.baseURL,
+            title: unescape(title)
+        });
+    };
+    page.source = "videoparams:" + JSON.stringify(videoparams);
+    page.type = "video";
     page.loading = false;
 });
+
+new page.Route(plugin.id + ":listSeries:(.*):(.*):(.*)", function(page, url, title, titleForSubs) {
+    setPageHeader(page, unescape(titleForSubs + ') ' + title));
+    page.loading = true;
+    var lnk = unescape(url);
+    var host = lnk.replace('http://', '').replace('https://', '').split(/[/?#]/)[0];
+    var doc = http.request(lnk, {
+        headers: {
+            Host: host,
+            Referer: 'http://baskino.co/',
+            'User-Agent': UA,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    }).toString();
+    try {
+        eval('var episodes =' + doc.match(/episodes: ([\s\S]*?)\],/)[1]+']');
+        for (var i in episodes) {
+            page.appendItem(plugin.id + ':s:' + lnk + escape('&episode=' + episodes[i]) + ":" + titleForSubs + escape(' - ' + episodes[i] + ' cерия)') + title, 'video', {
+                title: episodes[i] + ' cерия'
+            });
+        }
+    } catch(err) {}
+    page.loading = false;
+});
+
 
 var linksBlob = 0;
 
@@ -671,13 +721,23 @@ new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, 
                             title: series[2]
                         });
                     } else { // new moonwalk
-                        var num = series[2].match(/(\d+)/);
-                        for (var i = 1; i <= num[1]; i++) {
-                            var lnk = json[+series[1]].match(/src="([\S\s]*?)"/)[1];
-                            page.appendItem(plugin.id + ':s:' + lnk + escape('&episode=' + i) + ":" + escape(decodeURIComponent(title) + ' - ' + i + ' cерия)'), 'video', {
-                                title: i + ' cерия'
-                            });
-                        }
+                        var lnk = json[+series[1]].match(/src="([\S\s]*?)"/)[1];
+                        var host = lnk.replace('http://', '').replace('https://', '').split(/[/?#]/)[0];
+                        var doc = http.request(lnk, {
+                            headers: {
+                                Host: host,
+                                Referer: 'http://baskino.co/',
+                                'User-Agent': UA,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        }).toString();
+                        try {
+                            eval('var translations =' + doc.match(/translations: ([\s\S]*?)\]\],/)[1]+']]');
+                            for (var i in translations)
+                                page.appendItem(plugin.id + ':listSeries:' + escape('http://' + host + '/serial/' + translations[i][0] + '/iframe?season=' + episode) + ':' + escape(translations[i][1]) + ':' + escape(decodeURIComponent(title)), 'directory', {
+                                    title: translations[i][1]
+                                });
+                        } catch(err) {}
                     }
                     series = re2.exec(episodeDiv[2]);
                 }
@@ -685,7 +745,6 @@ new page.Route(plugin.id + ":indexSeason:(.*):(.*):(.*)", function(page, title, 
             }
             episodeDiv = re.exec(linksBlob);
         }
-
     } else {
         page.error("Не удалось получить линки серий :(");
         return;
@@ -704,13 +763,13 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     page.metadata.glwview = Plugin.path + 'list.view';
     setPageHeader(page, name);
     page.loading = true;
-    var icon = response.match(/<img itemprop="image"[\S\s]*?src="([\S\s]*?)"/)[1];
+    var icon = checkUrl(response.match(/<img itemprop="image"[\S\s]*?src="([\S\s]*?)"/)[1]);
     var year = response.match(/>Год:<\/td>[\S\s]*?<a href="([\S\s]*?)">([\S\s]*?)<\/a>/);
     var country = response.match(/>Страна:<\/td>[\S\s]*?<td>([\S\s]*?)<\/td>/)[1];
     var slogan = response.match(/>Слоган:<\/td>[\S\s]*?<td>([\S\s]*?)<\/td>/)
     if (slogan) slogan = slogan[1];
     var duration = response.match(/<td itemprop="duration">([\S\s]*?)<\/td>/);
-    if (duration) duration = duration[1];
+    if (duration) duration = trim(duration[1].replace(/\-/g, ''));
     var rating = response.match(/<b itemprop="ratingValue">([\S\s]*?)<\/b>/)[1].replace(",", ".") * 10;
     var directors = response.match(/<a itemprop="director"([\S\s]*?)<\/td>/)[1];
     var timestamp = response.match(/<div class="last_episode">([\S\s]*?)<\/div>/);
@@ -727,32 +786,13 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     genre = new RichText(genre + ' ' + coloredStr('<br>Cтрана: ', orange) + country +
          (trim(slogan) != '-' && trim(slogan) ? coloredStr("<br>Слоган: ", orange) + slogan : ''))
 
-    if (timestamp) { // series
-        page.appendPassiveItem('video', {}, {
-            title: name,
-            icon: checkUrl(icon),
-            year: +year[2],
-            genre: genre,
-            duration: duration,
-            rating: rating,
-            tagline: timestamp[1],
-            description: description
-        });
-
-        linksBlob = response;
-        re = /"showEpisodes\(([0-9]+),this\);">([\S\s]*?)<\/span>/g;
-        match = re.exec(response);
-        while (match) {
-            page.appendItem(plugin.id + ":indexSeason:" + encodeURIComponent(name + String.fromCharCode(8194) + '(' + match[2]) + ':' + match[1] + ':' + url, 'directory', {
-                title: match[2]
-            });
-            match = re.exec(response);
-        };
-    } else { // movie
-        function addItem(player) {
-            page.appendItem(link, 'video', {
-                title: new RichText(coloredStr(player, orange).replace(' плеер', '') + ' ' + name),
-                icon: checkUrl(icon),
+    function addTrailer() { //trailer
+        var html = response.match(/<span class="trailer_link">[\S\s]*?src="([\S\s]*?)"/);
+        if (html) {
+            var id = html[1].replace(/\\/g, '');
+            page.appendItem('youtube:video:' + id.substr(id.lastIndexOf('/') + 1), 'video', {
+                title: 'Трейлер',
+                icon: icon,
                 year: +year[2],
                 genre: genre,
                 duration: duration,
@@ -760,112 +800,97 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
                 description: description
             });
         }
-        // add HD first
-        var link = response.match(/<iframe src="(http:\/\/s.*?)"/);
-        if (link)
-            link = plugin.id + ":s:" + escape(link[1]) + ":" + escape(name);
-        else link = 0;
-        if (!link) {
-            link = response.match(/<iframe src="(http:\/\/vki.*?)"/);
-            if (link)
-                link = plugin.id + ":vki:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/<iframe src="(http:\/\/vk.*?)"/);
-            if (link)
-                link = plugin.id + ":vk:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/<iframe src="(https:\/\/vk.*?)"/);
-            if (link)
-                link = plugin.id + ":vk:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/<iframe src="(http:\/\/moonwalk.*?)"/);
-            if (link)
-                link = plugin.id + ":moonwalk:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/value="pl=c:(.*?)&amp;/);
-            if (link)
-                link = plugin.id + ":kinostok:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/src="(http:\/\/megogo.net.*?)"/);
-            if (link) link = plugin.id + ":megogo:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/;file=(.*?)&amp;/);
-            if (link)
-                link = plugin.id + ":armtube:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/value="fileID=(.*?)&/);
-            if (link)
-                link = plugin.id + ":metaua:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/src="(http:\/\/gidtv.*?)"/);
-            if (link)
-                link = plugin.id + ":gidtv:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (!link) {
-            link = response.match(/src="(http:\/\/hdgo.*?)"/);
-            if (link)
-                link = plugin.id + ":hdgo:" + escape(link[1]) + ":" + escape(name);
-            else link = 0;
-        }
-        if (link)
-            addItem('HD плеер');
+    }
 
-        // Then try baskino links
-        re = /file:"([^"]+)/g;
-        match = re.exec(response);
-        var num = 0;
-        while (match) {
-            var videoparams = {
-                sources: [{
-                    url: match[1]
-                }],
-                title: name,
-                imdbid: getIMDBid(name)
-            };
-            link = "videoparams:" + JSON.stringify(videoparams);
-            addItem(num ? 'Оригинал' : 'MP4 плеер');
-            num++;
-            match = re.exec(response);
-        }
-    };
-
-    //trailer
-    var html = response.match(/<span class="trailer_link">[\S\s]*?src="([\S\s]*?)"/);
-    if (html) {
-        var id = html[1].replace(/\\/g, '');
-        page.appendItem('youtube:video:' + id.substr(id.lastIndexOf('/') + 1), 'video', {
-            title: 'Трейлер',
-            icon: checkUrl(icon),
+    if (timestamp) { // series
+        page.appendItem(icon, 'video', {
+            title: name,
+            icon: icon,
             year: +year[2],
             genre: genre,
             duration: duration,
             rating: rating,
+            tagline: timestamp[1],
             description: description
         });
-    }
+        addTrailer();
+        linksBlob = response;
+        re = /"showEpisodes\(([0-9]+),this\);">([\S\s]*?)<\/span>/g;
+        match = re.exec(response);
+        while (match) {
+			            page.appendItem(plugin.id + ":indexSeason:" + encodeURIComponent(name + String.fromCharCode(8194) + '(' + match[2]) + ':' + match[1] + ':' + url, 'directory', {
+                title: match[2]
+            });
+            match = re.exec(response);
+        };																	
+    } else { // movie
+        //1-player's name, 2-blob with iframe
+        re = /id="basplayer_([\s\S]*?)"([\s\S]*?)<\/div>/g;
+        match = re.exec(response);
+        while (match) {
+            if (!match[2].match(/<iframe src="([\s\S]*?)"/)) {
+                match = re.exec(response);
+                continue;
+            }
+            var iframe = match[2].match(/<iframe src="([\s\S]*?)"/)[1];
+            var link = iframe.match(/(http:\/\/s.*)/);
+            if (link)
+                link = plugin.id + ":s:" + escape(link[1]) + ":" + escape(name);
+            if (!link) {
+                link = iframe.match(/(http:\/\/vki.*)/);
+                if (link)
+                     link = plugin.id + ":hdgo:" + escape(link[1]) + ":" + escape(name);
+            }
+            if (!link) {
+                link = iframe.match(/(http:\/\/vk.*)/);
+                if (link)
+                    link = plugin.id + ":vk:" + escape(link[1]) + ":" + escape(name);
+            }
+            if (!link) {
+                link = iframe.match(/(https:\/\/vk.*?)/);
+                if (link)
+                    link = plugin.id + ":vk:" + escape(link[1]) + ":" + escape(name);
+            }
+            if (!link) {
+                link = iframe.match(/(http:\/\/moonwalk.*)/);
+                if (link)
+                    link = plugin.id + ":moonwalk:" + escape(link[1]) + ":" + escape(name);
+            }
+            if (!link) {
+                link = iframe.match(/(http:\/\/megogo.net.*)/);
+                if (link) link = plugin.id + ":megogo:" + escape(link[1]) + ":" + escape(name);
+            }
+            if (!link) {
+                link = iframe.match(/(http:\/\/gidtv.*)/);
+                if (link)
+                    link = plugin.id + ":gidtv:" + escape(link[1]) + ":" + escape(name);
+            }
+            if (!link) {
+                link = iframe.match(/(http:\/\/hdgo.*)/);
+                if (link)
+                    link = plugin.id + ":hdgo:" + escape(link[1]) + ":" + escape(name);
+            }
+            if (link) {
+                page.appendItem(link, 'video', {
+                    title: new RichText(coloredStr(match[1].replace('html5', 'sd'), orange) + ' ' + name),
+                    icon: icon,
+                    year: +year[2],
+                    genre: genre,
+                    duration: duration,
+                    rating: rating,
+                    description: description
+                });
+            }
+            match = re.exec(response);
+        };
 
-    // cover
-    page.appendItem(checkUrl(icon), 'image', {
-        title: 'Обложка',
-        icon: checkUrl(icon)
-    });
+        addTrailer();
+        // cover
+        page.appendItem(icon, 'image', {
+            title: 'Обложка',
+            icon: icon
+        });
+    };
 
     //year
     page.appendItem("", "separator", {
