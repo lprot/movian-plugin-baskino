@@ -116,7 +116,7 @@ function scrapePageAtURL(page, url, title, query) {
     function loader() {
         if (!tryToSearch) return false;
         page.loading = true;
-        if (url == '/index.php?do=search')
+        if (query)
             var response = http.request(service.baseURL + url, {
                 postdata: {
                     subaction: 'search',
@@ -130,7 +130,7 @@ function scrapePageAtURL(page, url, title, query) {
             }).toString();
         else
             var response = http.request((url.substr(0, 4) == 'http' ? '' : service.baseURL) + unescape(url) + "/page/" + p + "/").toString();
-
+        
         // 1-link, 2-title, 3-icon, 4-quality, 5-full title,
         // 6-rating, 7-num of comments, 8-date added, 9-year
         var re = /<div class="postcover">[\S\s]*?<a href="([\S\s]*?)"[\S\s]*?<img title="([\S\s]*?)" src="([\S\s]*?)"([\S\s]*?)<\/a>[\S\s]*?<div class="posttitle">[\S\s]*?>([\S\s]*?)<\/a>[\S\s]*?<li class="current-rating" style="[\S\s]*?">([\S\s]*?)<\/li>[\S\s]*?<!-- <div class="linline">([\S\s]*?)<\/div>[\S\s]*?<div class="linline">([\S\s]*?)<\/div>[\S\s]*?<div class="rinline">([\S\s]*?)<\/div>/g;
@@ -148,8 +148,9 @@ function scrapePageAtURL(page, url, title, query) {
             page.entries++;
             match = re.exec(response);
         };
-        if (!response.match(/<div class="navigation">/)) return tryToSearch = false;
-        if (response.match(/<span>Вперед<\/span>/)) return tryToSearch = false;
+        page.loading = false;
+        if (!response.match(/<div class="navigation">/) || response.match(/<span>Вперед<\/span>/))
+            return tryToSearch = false;
         p++;
         return true;
     };
@@ -227,12 +228,6 @@ function getIMDBid(title) {
     log('Cannot get IMDB ID :(');
     return imdbid;
 };
-
-// No video
-new page.Route(plugin.id + ":novideo", function(page) {
-    page.error('Это видео изъято из публичного доступа. / This video is not available, sorry :(');
-    page.loading = false;
-});
 
 //Play vkino links
 new page.Route(plugin.id + ":vki:(.*):(.*)", function(page, url, title) {
@@ -466,65 +461,6 @@ new page.Route(plugin.id + ":moonwalk:(.*):(.*)", function(page, url, title) {
     page.loading = false;
 });
 
-// Play megogo links
-new page.Route(plugin.id + ":megogo:(.*)", function(page, url) {
-    page.loading = true;
-    var re = /[\S\s]*?([\d+^\?]+)/i;
-    var match = re.exec(unescape(url));
-    var sign = cryptodigest('md5', 'video=' + match[1] + '1e5774f77adb843c');
-    sign = JSON.parse(http.request('http://megogo.net/p/info?video=' + match[1] + '&sign=' + sign + '_samsungtv'));
-    if (!sign.src) {
-        page.loading = false;
-        popup.message("Error: This video is not available in your region :(", true, false);
-        return;
-    }
-    page.type = "video";
-    var series = unescape(title).trim().split(String.fromCharCode(8194));
-    var season = null,
-        episode = null;
-    if (series[1]) {
-        series = series[1].split('-');
-        season = +series[0].match(/(\d+)/)[1];
-        episode = +series[1].match(/(\d+)/)[1];
-    }
-    page.source = "videoparams:" + JSON.stringify({
-        title: unescape(title),
-        imdbid: getIMDBid(unescape(title)),
-        season: season,
-        episode: episode,
-        canonicalUrl: plugin.id + ":megogo:" + url,
-        sources: [{
-            url: sign.src
-        }]
-    });
-    page.loading = false;
-});
-
-// Play gidtv links
-new page.Route(plugin.id + ":gidtv:(.*):(.*)", function(page, url, title) {
-    page.loading = true;
-    var doc = http.request(unescape(url)).toString();
-    page.type = "video";
-    var series = unescape(title).trim().split(String.fromCharCode(8194));
-    var season = null,
-        episode = null;
-    if (series[1]) {
-        series = series[1].split('-');
-        season = +series[0].match(/(\d+)/)[1];
-        episode = +series[1].match(/(\d+)/)[1];
-    }
-    page.source = "videoparams:" + JSON.stringify({
-        title: unescape(title),
-        imdbid: getIMDBid(unescape(title)),
-        season: season,
-        episode: episode,
-        canonicalUrl: plugin.id + ":gidtv:" + url + ':' + title,
-        sources: [{
-            url: doc.match(/setFlash\('([\s\S]*?)\s/)[1].replace(/manifest.f4m/, 'index.m3u8')
-        }]
-    });
-    page.loading = false;
-});
 
 //Play Rutube links
 new page.Route(plugin.id + ":rutube:(.*):(.*)", function(page, url, title) {
@@ -830,7 +766,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
         re = /"showEpisodes\(([0-9]+),this\);">([\S\s]*?)<\/span>/g;
         match = re.exec(response);
         while (match) {
-			            page.appendItem(plugin.id + ":indexSeason:" + encodeURIComponent(name + String.fromCharCode(8194) + '(' + match[2]) + ':' + match[1] + ':' + url, 'directory', {
+            page.appendItem(plugin.id + ":indexSeason:" + encodeURIComponent(name + String.fromCharCode(8194) + '(' + match[2]) + ':' + match[1] + ':' + url, 'directory', {
                 title: match[2]
             });
             match = re.exec(response);
@@ -869,15 +805,6 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
                     link = plugin.id + ":moonwalk:" + escape(link[1]) + ":" + escape(name);
             }
             if (!link) {
-                link = iframe.match(/(http:\/\/megogo.net.*)/);
-                if (link) link = plugin.id + ":megogo:" + escape(link[1]) + ":" + escape(name);
-            }
-            if (!link) {
-                link = iframe.match(/(http:\/\/gidtv.*)/);
-                if (link)
-                    link = plugin.id + ":gidtv:" + escape(link[1]) + ":" + escape(name);
-            }
-            if (!link) {
                 link = iframe.match(/(http:\/\/hdgo.*)/);
                 if (link)
                     link = plugin.id + ":hdgo:" + escape(link[1]) + ":" + escape(name);
@@ -895,7 +822,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
             }
             match = re.exec(response);
         };
-
+        if (link) duration = void(0);
         addTrailer();
         // cover
         page.appendItem(icon, 'image', {
