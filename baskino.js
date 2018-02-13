@@ -711,7 +711,7 @@ new page.Route(plugin.id + ":index:(.*)", function(page, url) {
     page.metadata.glwview = Plugin.path + 'list.view';
     setPageHeader(page, name);
     page.loading = true;
-    var icon = checkUrl(response.match(/<img itemprop="image"[\S\s]*?src="([\S\s]*?)"/)[1]);
+    var icon = page.metadata.logo = checkUrl(response.match(/<img itemprop="image"[\S\s]*?src="([\S\s]*?)"/)[1]);
     var year = response.match(/>Год:<\/td>[\S\s]*?<a href="([\S\s]*?)">([\S\s]*?)<\/a>/);
     var country = response.match(/>Страна:<\/td>[\S\s]*?<td>([\S\s]*?)<\/td>/)[1];
     var slogan = response.match(/>Слоган:<\/td>[\S\s]*?<td>([\S\s]*?)<\/td>/)
