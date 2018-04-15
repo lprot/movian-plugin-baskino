@@ -27,6 +27,7 @@ var popup = require('native/popup');
 var io = require('native/io');
 var plugin = JSON.parse(Plugin.manifest);
 var logo = Plugin.path + plugin.icon;
+var CryptoJS = require("crypto-js");
 
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.84 Safari/537.36';
 
@@ -99,191 +100,11 @@ function cryptodigest(algo, str) {
 }
 
 function log(str) {
-    if (service.debug) console.log(str);
+    if (service.debug) 
+	console.log(str);
+	print(str);
 }
 
-/// MurmurHash3 related functions
-
-// Given two 64bit ints (as an array of two 32bit ints) returns the two
-// added together as a 64bit int (as an array of two 32bit ints).
-function x64Add(m, n) {
-    m = [m[0] >>> 16, m[0] & 0xffff, m[1] >>> 16, m[1] & 0xffff];
-    n = [n[0] >>> 16, n[0] & 0xffff, n[1] >>> 16, n[1] & 0xffff];
-    var o = [0, 0, 0, 0];
-    o[3] += m[3] + n[3];
-    o[2] += o[3] >>> 16;
-    o[3] &= 0xffff;
-    o[2] += m[2] + n[2];
-    o[1] += o[2] >>> 16;
-    o[2] &= 0xffff;
-    o[1] += m[1] + n[1];
-    o[0] += o[1] >>> 16;
-    o[1] &= 0xffff;
-    o[0] += m[0] + n[0];
-    o[0] &= 0xffff;
-    return [(o[0] << 16) | o[1], (o[2] << 16) | o[3]];
-}
-
-// Given two 64bit ints (as an array of two 32bit ints) returns the two
-// multiplied together as a 64bit int (as an array of two 32bit ints).
-function x64Multiply(m, n) {
-    m = [m[0] >>> 16, m[0] & 0xffff, m[1] >>> 16, m[1] & 0xffff];
-    n = [n[0] >>> 16, n[0] & 0xffff, n[1] >>> 16, n[1] & 0xffff];
-    var o = [0, 0, 0, 0];
-    o[3] += m[3] * n[3];
-    o[2] += o[3] >>> 16;
-    o[3] &= 0xffff;
-    o[2] += m[2] * n[3];
-    o[1] += o[2] >>> 16;
-    o[2] &= 0xffff;
-    o[2] += m[3] * n[2];
-    o[1] += o[2] >>> 16;
-    o[2] &= 0xffff;
-    o[1] += m[1] * n[3];
-    o[0] += o[1] >>> 16;
-    o[1] &= 0xffff;
-    o[1] += m[2] * n[2];
-    o[0] += o[1] >>> 16;
-    o[1] &= 0xffff;
-    o[1] += m[3] * n[1];
-    o[0] += o[1] >>> 16;
-    o[1] &= 0xffff;
-    o[0] += (m[0] * n[3]) + (m[1] * n[2]) + (m[2] * n[1]) + (m[3] * n[0]);
-    o[0] &= 0xffff;
-    return [(o[0] << 16) | o[1], (o[2] << 16) | o[3]];
-}
-
-// Given a 64bit int (as an array of two 32bit ints) and an int
-// representing a number of bit positions, returns the 64bit int (as an
-// array of two 32bit ints) rotated left by that number of positions.
-function x64Rotl(m, n) {
-    n %= 64;
-    if (n === 32) 
-        return [m[1], m[0]];
-    else if (n < 32) 
-        return [(m[0] << n) | (m[1] >>> (32 - n)), (m[1] << n) | (m[0] >>> (32 - n))];
-    else {
-        n -= 32;
-        return [(m[1] << n) | (m[0] >>> (32 - n)), (m[0] << n) | (m[1] >>> (32 - n))];
-    }
-}
-
-// Given a 64bit int (as an array of two 32bit ints) and an int
-// representing a number of bit positions, returns the 64bit int (as an
-// array of two 32bit ints) shifted left by that number of positions.
-function x64LeftShift(m, n) {
-    n %= 64;
-    if (n === 0) 
-        return m;
-    else if (n < 32) 
-        return [(m[0] << n) | (m[1] >>> (32 - n)), m[1] << n];
-    else 
-        return [m[1] << (n - 32), 0];
-}
-
-// Given two 64bit ints (as an array of two 32bit ints) returns the two
-// xored together as a 64bit int (as an array of two 32bit ints).
-function x64Xor(m, n) {
-    return [m[0] ^ n[0], m[1] ^ n[1]];
-}
-
-// Given a block, returns murmurHash3's final x64 mix of that block.
-// (`[0, h[0] >>> 1]` is a 33 bit unsigned right shift. This is the
-// only place where we need to right shift 64bit ints.)
-//
-function x64Fmix(h) {
-    h = x64Xor(h, [0, h[0] >>> 1]);
-    h = x64Multiply(h, [0xff51afd7, 0xed558ccd]);
-    h = x64Xor(h, [0, h[0] >>> 1]);
-    h = x64Multiply(h, [0xc4ceb9fe, 0x1a85ec53]);
-    h = x64Xor(h, [0, h[0] >>> 1]);
-    return h;
-}
-
-// Given a string and an optional seed as an int, returns a 128 bit
-// hash using the x64 flavor of MurmurHash3, as an unsigned hex.
-//
-function x64hash128(key, seed) {
-    key = key || "";
-    seed = seed || 0;
-    var remainder = key.length % 16;
-    var bytes = key.length - remainder;
-    var h1 = [0, seed];
-    var h2 = [0, seed];
-    var k1 = [0, 0];
-    var k2 = [0, 0];
-    var c1 = [0x87c37b91, 0x114253d5];
-    var c2 = [0x4cf5ad43, 0x2745937f];
-    for (var i = 0; i < bytes; i = i + 16) {
-        k1 = [((key.charCodeAt(i + 4) & 0xff)) | ((key.charCodeAt(i + 5) & 0xff) << 8) | ((key.charCodeAt(i + 6) & 0xff) << 16) | ((key.charCodeAt(i + 7) & 0xff) << 24), ((key.charCodeAt(i) & 0xff)) | ((key.charCodeAt(i + 1) & 0xff) << 8) | ((key.charCodeAt(i + 2) & 0xff) << 16) | ((key.charCodeAt(i + 3) & 0xff) << 24)];
-        k2 = [((key.charCodeAt(i + 12) & 0xff)) | ((key.charCodeAt(i + 13) & 0xff) << 8) | ((key.charCodeAt(i + 14) & 0xff) << 16) | ((key.charCodeAt(i + 15) & 0xff) << 24), ((key.charCodeAt(i + 8) & 0xff)) | ((key.charCodeAt(i + 9) & 0xff) << 8) | ((key.charCodeAt(i + 10) & 0xff) << 16) | ((key.charCodeAt(i + 11) & 0xff) << 24)];
-        k1 = x64Multiply(k1, c1);
-        k1 = x64Rotl(k1, 31);
-        k1 = x64Multiply(k1, c2);
-        h1 = x64Xor(h1, k1);
-        h1 = x64Rotl(h1, 27);
-        h1 = x64Add(h1, h2);
-        h1 = x64Add(x64Multiply(h1, [0, 5]), [0, 0x52dce729]);
-        k2 = x64Multiply(k2, c2);
-        k2 = x64Rotl(k2, 33);
-        k2 = x64Multiply(k2, c1);
-        h2 = x64Xor(h2, k2);
-        h2 = x64Rotl(h2, 31);
-        h2 = x64Add(h2, h1);
-        h2 = x64Add(x64Multiply(h2, [0, 5]), [0, 0x38495ab5]);
-    }
-    k1 = [0, 0];
-    k2 = [0, 0];
-    switch(remainder) {
-        case 15:
-          k2 = x64Xor(k2, x64LeftShift([0, key.charCodeAt(i + 14)], 48));
-        case 14:
-          k2 = x64Xor(k2, x64LeftShift([0, key.charCodeAt(i + 13)], 40));
-        case 13:
-          k2 = x64Xor(k2, x64LeftShift([0, key.charCodeAt(i + 12)], 32));
-        case 12:
-          k2 = x64Xor(k2, x64LeftShift([0, key.charCodeAt(i + 11)], 24));
-        case 11:
-          k2 = x64Xor(k2, x64LeftShift([0, key.charCodeAt(i + 10)], 16));
-        case 10:
-          k2 = x64Xor(k2, x64LeftShift([0, key.charCodeAt(i + 9)], 8));
-        case 9:
-          k2 = x64Xor(k2, [0, key.charCodeAt(i + 8)]);
-          k2 = x64Multiply(k2, c2);
-          k2 = x64Rotl(k2, 33);
-          k2 = x64Multiply(k2, c1);
-          h2 = x64Xor(h2, k2);
-        case 8:
-          k1 = x64Xor(k1, x64LeftShift([0, key.charCodeAt(i + 7)], 56));
-        case 7:
-          k1 = x64Xor(k1, x64LeftShift([0, key.charCodeAt(i + 6)], 48));
-        case 6:
-          k1 = x64Xor(k1, x64LeftShift([0, key.charCodeAt(i + 5)], 40));
-        case 5:
-          k1 = x64Xor(k1, x64LeftShift([0, key.charCodeAt(i + 4)], 32));
-        case 4:
-          k1 = x64Xor(k1, x64LeftShift([0, key.charCodeAt(i + 3)], 24));
-        case 3:
-          k1 = x64Xor(k1, x64LeftShift([0, key.charCodeAt(i + 2)], 16));
-        case 2:
-          k1 = x64Xor(k1, x64LeftShift([0, key.charCodeAt(i + 1)], 8));
-        case 1:
-          k1 = x64Xor(k1, [0, key.charCodeAt(i)]);
-          k1 = x64Multiply(k1, c1);
-          k1 = x64Rotl(k1, 31);
-          k1 = x64Multiply(k1, c2);
-          h1 = x64Xor(h1, k1);
-    }
-    h1 = x64Xor(h1, [0, key.length]);
-    h2 = x64Xor(h2, [0, key.length]);
-    h1 = x64Add(h1, h2);
-    h2 = x64Add(h2, h1);
-    h1 = x64Fmix(h1);
-    h2 = x64Fmix(h2);
-    h1 = x64Add(h1, h2);
-    h2 = x64Add(h2, h1);
-    return ("00000000" + (h1[0] >>> 0).toString(16)).slice(-8) + ("00000000" + (h1[1] >>> 0).toString(16)).slice(-8) + ("00000000" + (h2[0] >>> 0).toString(16)).slice(-8) + ("00000000" + (h2[1] >>> 0).toString(16)).slice(-8);
-}
 
 // Top-250
 new page.Route(plugin.id + ":top", function(page) {
@@ -716,15 +537,11 @@ new page.Route(plugin.id + ":hdgo:(.*):(.*)", function(page, url, title) {
     page.loading = false;
 });
 
-var md5 = cryptodigest('md5', misc.systemIpAddress() + Core.currentVersionString);
-var x = 1920 - parseInt(md5[30] + md5[31], 16);
-var y = 1080 - parseInt(md5[28] + md5[29], 16)
-var keys = '[{"key":"user_agent","value":"' + service.UA + '"},{"key":"language","value":"en-US"},{"key":"color_depth","value":24},{"key":"pixel_ratio","value":1},{"key":"hardware_concurrency","value":2},{"key":"resolution","value":['+x+','+y+']},{"key":"available_resolution","value":['+x+','+y+']},{"key":"timezone_offset","value":0},{"key":"session_storage","value":1},{"key":"local_storage","value":1},{"key":"indexed_db","value":1},{"key":"open_database","value":1},{"key":"cpu_class","value":"unknown"},{"key":"navigator_platform","value":"'+service.platform+'"},{"key":"do_not_track","value":"unknown"},{"key":"regular_plugins","value":"undefined"},{"key":"canvas","value":"canvas winding:yes~canvas fp:data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB9AAAADICAYAAACwGnoBAAAH6ElEQVR4nO3ZMQEAAAiAMPuXxhh6bAn4mQAAAAAAAACA5joAAAAAAAAAAD4w0AEAAAAAAAAgAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAACoDHQAAAAAAAAAqAx0AAAAAAAAAKgMdAAAAAAAAAKpaV/0C3qz3zKIAAAAASUVORK5CYII="},{"key":"adblock","value":false},{"key":"has_lied_languages","value":false},{"key":"has_lied_resolution","value":false},{"key":"has_lied_os","value":false},{"key":"has_lied_browser","value":false},{"key":"touch_support","value":[0,false,false]},{"key":"js_fonts","value":["Arial","Courier","Courier New","Helvetica","Times","Times New Roman"]}]';
-
 // Play s links
 new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
     page.loading = true;
 
+    log("Requesting: " + unescape(url));
     var doc = http.request(unescape(url), {
         headers: {
             Host: unescape(url).replace('http://', '').replace('https://', '').split(/[/?#]/)[0],
@@ -734,6 +551,10 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
         }
     }).toString();
 
+    VideoBalancer = /new VideoBalancer\(([^\;]+})/.exec(doc)[1];
+    log(VideoBalancer);
+    eval('options = ' + VideoBalancer);
+
     var subtitles = 0;
     try { 
         log(doc.match(/subtitles: ([\s\S]*?)},/)[1] + '}');
@@ -741,38 +562,35 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
     } catch(err) {}
 
     var host = doc.match(/host: '([\s\S]*?)'/)[1];
+    log("Requesting: " + 'http://' + host + doc.match(/<script src="([\s\S]*?)">/)[1]);
 
     var js = http.request('http://' + host + doc.match(/<script src="([\s\S]*?)">/)[1]).toString();
-
-    js = js.match(/mw_key:"([\s\S]*?)"[\s\S]*?partner_id,([\s\S]*?):[\s\S]*?ad_attr:([\s\S]*?),iframe_version:"([\s\S]*?)"[\s\S]*?n\.([\s\S]*?)=[\s\S]*?n\.([\s\S]*?)=/);
-    var data = {
-        'mw_key': js[1],
-        'mw_pid': doc.match(/partner_id: ([\s\S]*?),/)[1],
-        'ad_attr': js[3],
-        'iframe_ver': js[4],
-    };
-    data[trim(js[2])] = doc.match(/domain_id: ([\s\S]*?),/)[1];
-    data[trim(js[5])] = doc.match(/\] = '([\s\S]*?)'/)[1];
-
-    var json = JSON.parse(keys);
-    var values = [];
-    for (var i in json) {
-        var value = json[i].value;
-        if (typeof json[i].value.join !== "undefined")
-            value = json[i].value.join(";");
-        values.push(value);
-    }
-    data[trim(js[6])] = x64hash128(values.join("~~~"), 31)
+    window_key = /window\['(\w+)'\]\s*=\s*'(\w+)'/g.exec(doc);
+    window_val = /eval\("window.*?[a-f0-9]{32}.*?([a-f0-9]{32})/g.exec(js);
+    post_data = /getVideoManifests.*?\{(.*?\}\)\;)/g.exec(js);
+    post_data = post_data[1].replace(/this./g, '');
+    post_data = post_data.replace('window["' + window_key[1] + '"]', '"' + window_val[1] + '"');
+    post_data = post_data.replace('window._mw_adb', 'false');
+    post_data = post_data.replace('navigator.userAgent', '"' + UA + '"');
+    post_data = post_data.replace('$.ajax', 'console.log');
+    eval(post_data);
+    log(post_data.replace(/\,/g, ',\n'));
+    log(i);
     
-    var json = JSON.parse(http.request('http://' + host + '/manifests/video/' + doc.match(/video_token: '([\s\S]*?)'/)[1] + '/all', {
+    var json = JSON.parse(http.request('http://' + host + '/vs', {
         headers: {
             Host: host,
             Referer: unescape(url),
             'User-Agent': UA,
             'X-Requested-With': 'XMLHttpRequest'
         },
-        postdata: data
+        postdata: {
+            q: i
+	}
     }));
+
+    log(JSON.stringify(json));
+
     io.httpInspectorCreate('.*' + host + '.*', function(req) {
         req.setHeader('User-Agent', UA);
         req.setHeader('Host', host);
@@ -795,7 +613,7 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
         episode: episode,
         canonicalUrl: plugin.id + ':s:' + url + ':' + title,
         sources: [{
-            url: 'hls:' + json.mans.manifest_m3u8
+            url: 'hls:' + json.m3u8
         }],
         subtitles: []
     };
