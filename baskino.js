@@ -79,7 +79,7 @@ function trim(s) {
 service.create(plugin.title, plugin.id + ":start", 'video', true, logo);
 
 settings.globalSettings(plugin.id, plugin.title, logo, plugin.synopsis);
-settings.createString('baseURL', "Base URL without '/' at the end", 'http://baskino.co', function(v) {
+settings.createString('baseURL', "Base URL without '/' at the end", 'http://baskino.me', function(v) {
     service.baseURL = v;
 });
 settings.createBool('debug', 'Enable debug logging',  false, function(v) {
@@ -572,10 +572,10 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
     post_data = post_data.replace('window["' + window_key[1] + '"]', '"' + window_val[1] + '"');
     post_data = post_data.replace('window._mw_adb', 'false');
     post_data = post_data.replace('navigator.userAgent', '"' + UA + '"');
-    post_data = post_data.replace('$.ajax', 'console.log');
+    post_data = post_data.replace('$.ajax', 'i=');
     eval(post_data);
     log(post_data.replace(/\,/g, ',\n'));
-    log(i);
+    log(i.data.q);
     
     var json = JSON.parse(http.request('http://' + host + '/vs', {
         headers: {
@@ -585,7 +585,7 @@ new page.Route(plugin.id + ":s:(.*):(.*)", function(page, url, title) {
             'X-Requested-With': 'XMLHttpRequest'
         },
         postdata: {
-            q: i
+            q: i.data.q
 	}
     }));
 
